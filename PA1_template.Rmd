@@ -1,0 +1,134 @@
+Reproducible Research: Peer Assessment 1
+========================================================
+output: 
+html_document:
+keep_md: true
+
+Notice
+------
+I am not an english native speaker. A great effort was made to state clearly the ideas but I am not sure if it was accomplished. I apologize for the inconvenience and thanks for your patience.
+
+## Loading and preprocessing the data
+After calling the requested libraries, we check if there is a directory named "data" under the working directory to store the download. If not, it will be created and setted as working directory. Then it downloads and unzips the file. A data frame is created and populated with the content of the file and some initial inspections are done.
+
+```{r loadingprocessing ,echo=TRUE}
+library(dplyr)
+library(ggplot2)
+if (!file.exists("data")){
+      dir.create("data")
+      }
+setwd("./data")
+file_url <- "http://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+download.file(file_url, destfile="./activity.zip", method = "auto")
+unzip("activity.zip")
+activity <- read.table("activity.csv", sep=",", header=TRUE)
+head(activity)
+str(activity)
+summary(activity)
+```
+
+## What is mean total number of steps taken per day?
+Here we summarize the data by the sum of steps per day to make a histogram and compute mean and median 
+
+```{r histmedia, echo=TRUE, fig.height=4}
+activity1 <- summarise(group_by(activity,date), sum(steps))
+colnames(activity1) <- c("date","sum_steps")
+hist(activity1$sum_steps, breaks=10, col="cadet blue", main="Total steps per day")
+abline (v= mean(activity1$sum_steps, na.rm=TRUE), col="magenta", lwd=2)
+abline (v= median(activity1$sum_steps, na.rm=TRUE), col="blue", lwd=2)
+media <- mean(activity1$sum_steps, na.rm=TRUE)
+media
+mediana <- median(activity1$sum_steps, na.rm=TRUE)
+mediana
+```
+
+Since the mean = **`r media`** and the median = **`r mediana`** are almost the same, the blue line (median) overrides the magenta (mean) and stands for both.
+
+## What is the average daily activity pattern?
+In order to plot a time series, we summarize the original dataset by the mean of steps, grouped by intervals. To highlight that the sequence of intervals goes through all day long, we choose to tweak the x-axis, so we can clearly see the hours of day, as [suggested on the forum by K. G. Williams] (https://class.coursera.org/repdata-011/forum/thread?thread_id=47) 
+
+```{r dailypattern, echo=TRUE,fig.height=4, fig.width=10}
+activity2 <- summarise(group_by(activity,interval), mean(steps, na.rm=TRUE))
+colnames(activity2)<-c("interval","mean_steps")
+p <- ggplot(activity2, aes(interval,mean_steps)) + geom_line() + scale_x_discrete(breaks=seq(0, 2400, by=100))+ggtitle("Mean of steps for intervals")
+p
+max_steps <- max(activity2$mean_steps)
+max_interval <- activity2[activity2$mean_steps==max_steps,1]
+max_interval
+```
+
+The interval that contains the maximum number of steps, on average, is the one labeled **`r max_interval`** (8:35 to 8:40).
+
+## Imputing missing values
+All the missing values occurs on the "step" variable of the dataset, as we previously saw at the first summary. Nevertheless, we calculate it again:
+```{r missingvalues, echo= TRUE, fig.height=4}
+missing <- c(is.na(activity[,1:3]))
+missing <- sum(missing)
+prop_miss <- missing / nrow(activity) * 100
+```
+The total number of rows with missing values is **`r missing`** , **`r prop_miss` %** of the rows.
+
+We choose to use the mean of steps for each interval to replace correspondent missing values. First we merge the original dataset with the summary (mean) of steps per interval. Then, by a loop and a condition, we create a vector with valid values and change the dataset.
+
+```{r impute, echo= TRUE, fig.height=4}
+activity3 <- merge(activity,activity2)
+imputed_steps <- NULL
+for (i in 1:nrow(activity3)){
+      if (is.na(activity3[i,2])){
+            imputed_steps <- append (imputed_steps, activity3[i,4])
+      }else{
+             imputed_steps <- append (imputed_steps, activity3[i,2])
+}
+}
+act3 <- data.frame(imputed_steps,activity3[,3],activity3[,1])
+colnames(act3) <- c("steps","date","interval")
+```
+"act3" is the correspondent to original dataset with imputed means to missing values.
+
+So we summarize this full dataset in order to make a new histogram of the total steps per day and calculate the measures required.
+
+```{r, fig.height=5}
+activity4 <- summarise(group_by(act3,date), sum(steps))
+colnames(activity4) <- c("date","sum_imputed_steps")
+hist(activity4$sum_imputed_steps, breaks=10, col="cadet blue", main="Total steps per day (NA imputed with mean by interval)")
+abline (v= mean(activity4$sum_imputed_steps), col="magenta", lwd=2)
+abline (v= median(activity4$sum_imputed_steps), col="blue", lwd=2)
+media1 <- mean(activity4$sum_imputed_steps)
+media1
+mediana1 <- median(activity4$sum_imputed_steps)
+mediana1
+dif_media <- media - media1
+dif_mediana <- mediana - mediana1
+```
+
+The mean is  **`r media1`** and the median, **`r mediana1`**  (represented by the blue line). The difference between these and the no imputed measures was **`r dif_media`** for the mean and **`r dif_mediana`** for the median. We concluded that imputting means to NAs do not affect the central tendencies measures.
+
+## Are there differences in activity patterns between weekdays and weekends?
+For this last section, we convert the date variable to use the function "weekdays()". Then we set it as "weekday" or "weekend" to a new variable and attach to the dataset. It was summarized by the mean of steps, grouped by interval and kind of weekday. A plot was generated, as required.
+
+```{r weekdays, fig.height=4, fig.width=10}
+Sys.setlocale("LC_TIME", "English")
+act3$date <-strptime(activity$date, "%Y-%m-%d")
+semana <- weekdays(act3$date)
+activity5 <- cbind(act3,semana)
+fimsemana <- NULL
+for (j in 1:length(semana)){
+      if (semana[j] == "Saturday" | semana[j] == "Sunday"){
+            fimsemana <- append (fimsemana, "weekend")
+      }else{
+            fimsemana <- append (fimsemana, "weekday")
+      }
+}
+activity5 <- cbind(activity5,fimsemana)
+activity5 <- activity5[,-2]
+activity6 <- summarise(group_by(activity5,interval,fimsemana), mean(steps))
+colnames(activity6) <- c("interval","fimsemana","mean_steps")
+p <- ggplot(activity6, aes(interval,mean_steps)) + geom_line(colour="blue") + scale_x_discrete(breaks=seq(0, 2400, by=100)) + facet_grid(fimsemana ~ .)+ ggtitle("Mean of steps for intervals and days")
+p
+```
+
+Although we can't say about the activities performed on working days and weekend, the shape of the plots are quite similar along the day, indicating some routine.
+
+Thank you!
+
+
